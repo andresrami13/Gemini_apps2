@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi App Web con Google Sheets</title>
+    <!-- Carga de Tailwind CSS para estilos rápidos y responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define la fuente Inter para todo el cuerpo */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Fondo suave */
+        }
+        /* Estilos para el contenedor de mensajes */
+        #messageBox {
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #messageBox.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-lg border border-gray-200">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Mi App de Datos Simple</h1>
+        <p class="text-gray-600 text-center mb-6">Introduce datos y visualízalos desde tu hoja de Google Sheets.</p>
+
+        <!-- Sección de Mensajes -->
+        <div id="messageBox" class="p-3 mb-4 rounded-md text-sm transition-opacity duration-500 hidden" role="alert">
+            <p id="messageText" class="font-medium"></p>
+        </div>
+
+        <!-- Formulario de Entrada de Datos -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Añadir Nuevo Elemento</h2>
+            <div class="mb-4">
+                <label for="nombreInput" class="block text-gray-700 text-sm font-bold mb-2">Nombre:</label>
+                <input type="text" id="nombreInput" placeholder="Ej. Tarea A"
+                       class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+            </div>
+            <div class="mb-4">
+                <label for="descripcionInput" class="block text-gray-700 text-sm font-bold mb-2">Descripción:</label>
+                <textarea id="descripcionInput" placeholder="Ej. Completar informe X" rows="3"
+                          class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500 resize-y"></textarea>
+            </div>
+            <button id="guardarBtn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full transform transition-transform duration-200 hover:scale-105">
+                <span id="guardarBtnText">Guardar Datos</span>
+            </button>
+        </div>
+
+        <!-- Sección de Visualización de Datos -->
+        <div>
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Datos de Google Sheets</h2>
+            <button id="cargarBtn"
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full transform transition-transform duration-200 hover:scale-105 mb-4">
+                <span id="cargarBtnText">Cargar Datos</span>
+            </button>
+            <div id="datosCargados" class="bg-gray-50 p-4 rounded-lg border border-gray-200 min-h-[100px] overflow-auto">
+                <p class="text-gray-500 text-center" id="noDataMessage">Haz clic en "Cargar Datos" para ver los elementos.</p>
+                <table class="min-w-full divide-y divide-gray-200 hidden" id="dataTable">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-lg">Nombre</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tr-lg">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="tableBody">
+                        <!-- Los datos se inyectarán aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ESTA URL DEBE SER REEMPLAZADA CON LA URL DE TU PROPIO GOOGLE APPS SCRIPT WEB APP 
+        // (Ver las instrucciones en la sección siguiente)
+        const GOOGLE_APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw0jAJjgdMSqZDVQf37l7vS5kqISWcuZ6ljddQ7435kxugfzEQcsGLGoXeeeoraxCvXqA/exec'; 
+
+        const nombreInput = document.getElementById('nombreInput');
+        const descripcionInput = document.getElementById('descripcionInput');
+        const guardarBtn = document.getElementById('guardarBtn');
+        const cargarBtn = document.getElementById('cargarBtn');
+        const datosCargadosDiv = document.getElementById('datosCargados');
+        const noDataMessage = document.getElementById('noDataMessage');
+        const dataTable = document.getElementById('dataTable');
+        const tableBody = document.getElementById('tableBody');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const guardarBtnText = document.getElementById('guardarBtnText');
+        const cargarBtnText = document.getElementById('cargarBtnText');
+
+        // Función para mostrar mensajes de éxito o error
+        function showToast(message, type = 'success') {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-800');
+            } else {
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            }
+            messageBox.classList.add('show');
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                setTimeout(() => {
+                    messageBox.classList.add('hidden');
+                }, 500); // Espera a que termine la transición de opacidad
+            }, 3000);
+        }
+
+        // Función para guardar datos en Google Sheets
+        async function sendDataToSheet() {
+            const nombre = nombreInput.value.trim();
+            const descripcion = descripcionInput.value.trim();
+
+            if (!nombre || !descripcion) {
+                showToast('Por favor, completa todos los campos.', 'error');
+                return;
+            }
+
+            guardarBtn.disabled = true;
+            guardarBtnText.textContent = 'Guardando...';
+
+            try {
+                const response = await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'add',
+                        nombre: nombre,
+                        descripcion: descripcion
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast('Datos guardados correctamente!');
+                    nombreInput.value = '';
+                    descripcionInput.value = '';
+                    loadDataFromSheet(); // Recargar datos después de guardar
+                } else {
+                    showToast(`Error al guardar: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error al guardar datos:', error);
+                showToast(`Error de conexión: ${error.message}. Verifica la URL del Apps Script.`, 'error');
+            } finally {
+                guardarBtn.disabled = false;
+                guardarBtnText.textContent = 'Guardar Datos';
+            }
+        }
+
+        // Función para cargar datos desde Google Sheets
+        async function loadDataFromSheet() {
+            cargarBtn.disabled = true;
+            cargarBtnText.textContent = 'Cargando...';
+            tableBody.innerHTML = ''; // Limpiar tabla antes de cargar
+
+            try {
+                const response = await fetch(`${GOOGLE_APPS_SCRIPT_WEB_APP_URL}?action=read`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success' && data.data.length > 0) {
+                    noDataMessage.classList.add('hidden');
+                    dataTable.classList.remove('hidden');
+                    data.data.forEach((row, index) => {
+                        const tr = document.createElement('tr');
+                        // Usamos index + 2 porque la fila 1 son los encabezados en la hoja de cálculo
+                        // y el índice de array es base 0, por lo tanto, el ID de fila real es index + 2
+                        tr.dataset.rowIndex = index + 2; 
+                        tr.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${row[0]}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${row[1]}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg text-xs mr-2 delete-btn" data-row-index="${index + 2}">Eliminar</button>
+                                <button class="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded-lg text-xs edit-btn" data-row-index="${index + 2}">Editar</button>
+                            </td>
+                        `;
+                        tableBody.appendChild(tr);
+                    });
+                    addDeleteEditListeners(); // Añadir listeners después de cargar los datos
+                } else {
+                    noDataMessage.classList.remove('hidden');
+                    dataTable.classList.add('hidden');
+                    showToast('No hay datos en la hoja de cálculo.', 'info');
+                }
+            } catch (error) {
+                console.error('Error al cargar datos:', error);
+                showToast(`Error de conexión al cargar: ${error.message}.`, 'error');
+                noDataMessage.classList.remove('hidden'); // Asegura que el mensaje de "no data" se muestre en caso de error
+                dataTable.classList.add('hidden');
+            } finally {
+                cargarBtn.disabled = false;
+                cargarBtnText.textContent = 'Cargar Datos';
+            }
+        }
+
+        // Función para eliminar una fila
+        async function deleteRow(rowIndex) {
+            if (!confirm(`¿Estás seguro de que quieres eliminar la fila ${rowIndex}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'delete',
+                        rowIndex: rowIndex
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast('Fila eliminada correctamente!');
+                    loadDataFromSheet(); // Recargar datos
+                } else {
+                    showToast(`Error al eliminar: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error al eliminar fila:', error);
+                showToast(`Error de conexión al eliminar: ${error.message}`, 'error');
+            }
+        }
+
+        // Función para iniciar la edición de una fila
+        function startEdit(rowIndex) {
+            const rowElement = document.querySelector(`tr[data-row-index="${rowIndex}"]`);
+            if (!rowElement) return;
+
+            const cells = rowElement.querySelectorAll('td');
+            const currentNombre = cells[0].textContent;
+            const currentDescripcion = cells[1].textContent;
+
+            // Rellenar el formulario de añadir con los datos de la fila seleccionada
+            nombreInput.value = currentNombre;
+            descripcionInput.value = currentDescripcion;
+
+            // Cambiar el botón "Guardar" por "Actualizar"
+            guardarBtn.textContent = 'Actualizar Datos';
+            guardarBtn.onclick = () => updateDataInSheet(rowIndex);
+            
+            // Opcional: Desplazar la vista hacia el formulario para mejor UX
+            nombreInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Función para actualizar una fila en Google Sheets
+        async function updateDataInSheet(rowIndex) {
+            const newNombre = nombreInput.value.trim();
+            const newDescripcion = descripcionInput.value.trim();
+
+            if (!newNombre || !newDescripcion) {
+                showToast('Por favor, completa todos los campos para actualizar.', 'error');
+                return;
+            }
+
+            guardarBtn.disabled = true;
+            guardarBtn.textContent = 'Actualizando...';
+
+            try {
+                const response = await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'update',
+                        rowIndex: rowIndex,
+                        nombre: newNombre,
+                        descripcion: newDescripcion
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast('Datos actualizados correctamente!');
+                    nombreInput.value = '';
+                    descripcionInput.value = '';
+                    // Restaurar el botón Guardar
+                    guardarBtn.textContent = 'Guardar Datos';
+                    guardarBtn.onclick = sendDataToSheet;
+                    loadDataFromSheet(); // Recargar datos
+                } else {
+                    showToast(`Error al actualizar: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error al actualizar datos:', error);
+                showToast(`Error de conexión al actualizar: ${error.message}`, 'error');
+            } finally {
+                guardarBtn.disabled = false;
+                guardarBtn.textContent = 'Guardar Datos';
+            }
+        }
+
+
+        // Añadir listeners a los botones de eliminar/editar (delegación de eventos)
+        function addDeleteEditListeners() {
+            tableBody.querySelectorAll('.delete-btn').forEach(button => {
+                button.onclick = () => deleteRow(button.dataset.rowIndex);
+            });
+            tableBody.querySelectorAll('.edit-btn').forEach(button => {
+                button.onclick = () => startEdit(button.dataset.rowIndex);
+            });
+        }
+
+
+        // Event Listeners principales
+        guardarBtn.addEventListener('click', sendDataToSheet);
+        cargarBtn.addEventListener('click', loadDataFromSheet);
+
+        // Cargar datos al iniciar la app
+        window.onload = loadDataFromSheet;
+    </script>
+</body>
+</html>
